@@ -1,0 +1,98 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+client_secret*.json
+token*.json
+cookies*.json
+storage_state*.json
+
+# Browser sessions (never commit authenticated profiles)
+chrome-cdp-profile/
+user-data-dir/
+playwright/.auth/
+
+# Runtime state and generated media
+jobs/
+Downloads/
+screenshots/
+node_modules/
+*.log
+*.mp3
+*.mp4
+*.wav
+*.m4a
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+
+# Affiliate/product state
+selected_product.json
+product_history.jsonl
+smoke_product_history.jsonl
+run_log.jsonl
+comment_history.jsonl
+
+# Browser dumps and temporary diagnostics
+/*.json
+*cookies*.json
+amazon_*.html
+amazon_*.txt
+chatgpt_live*
+NUL
+nul
+
+# One-off dated operations (not reusable source)
+/submit_*.py
+/studio_*.py
+/verify_*.py
+/retry_*.py
+/*_prompt_*.txt
+/marts_current_*.txt
+/check_*.py
+/fix_*.py
+/inspect_*.py
+/inspect_*.js
+/probe_*.py
+/raw_probe_*.py
+/test_*.py
+/visibility_*.py
+/submit_*.ps1
+/tmp_*.py
+/prepare_demo_*.py
+/resume_video.py
+/grok_test.py
+/edit_demo_*.js
+/generate_demo_*.js
+/get_demo_*.js
+/send_stuck_*.js
+/smoke_*.py
+
+# Local Task Scheduler/bootstrap variants
+create_task.*
+install_frontend_task.ps1
+start_frontend.ps1
+startup.log
+frontend_wsl.log
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
