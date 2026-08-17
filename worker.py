@@ -842,6 +842,14 @@ def affiliate_comment_already_done(st: dict, video_id: str, product: dict) -> bo
     return bool(record.get("verified") and record.get("fingerprint") == expected)
 
 
+def affiliate_comment_matches(matched_text: str, product: dict) -> bool:
+    """Verify the exact short product name and affiliate URL that are posted."""
+    from affiliate_product import affiliate_comment_text
+
+    expected_name, expected_url = affiliate_comment_text(product).splitlines()
+    return expected_name in str(matched_text or "") and expected_url in str(matched_text or "")
+
+
 async def post_youtube_affiliate_comment(youtube_url: str, product: dict) -> dict:
     """Post one disclosed affiliate comment and verify it on the public watch page."""
     from affiliate_product import (
@@ -908,7 +916,7 @@ async def post_youtube_affiliate_comment(youtube_url: str, product: dict) -> dic
             matched = page.locator("ytd-comment-thread-renderer").filter(has_text=pinfo["affiliate_url"])
             await matched.first.wait_for(state="visible", timeout=30000)
             matched_text = await matched.first.inner_text(timeout=10000)
-            if pinfo["name"] not in matched_text or pinfo["affiliate_url"] not in matched_text:
+            if not affiliate_comment_matches(matched_text, pinfo):
                 raise RuntimeError("affiliate comment appeared but exact product/link verification failed")
             hrefs = await matched.first.locator('a[href*="lc="]').evaluate_all(
                 "els => els.map(e => e.href).filter(Boolean)"

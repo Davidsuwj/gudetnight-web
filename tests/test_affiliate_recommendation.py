@@ -15,6 +15,7 @@ from affiliate_product import (
 )
 from worker import (
     affiliate_comment_already_done,
+    affiliate_comment_matches,
     attach_product_context,
     build_image_prompt,
     build_shorts_mode_prompt,
@@ -58,6 +59,13 @@ def test_affiliate_comment_shortens_verbose_amazon_title():
     product = valid_product()
     product["name"] = "Dell 32 Monitor S3225QS, 4K UHD VA | 120Hz, Eye Comfort"
     assert affiliate_comment_text(product) == "Dell 32 Monitor S3225QS\nhttps://amzn.to/4abcDEF"
+
+
+def test_comment_verifier_accepts_the_short_name_that_is_actually_posted():
+    product = valid_product()
+    product["name"] = "Dell 32 Monitor S3225QS, 4K UHD VA | 120Hz, Eye Comfort"
+    posted = "Dell 32 Monitor S3225QS\nhttps://amzn.to/4abcDEF"
+    assert affiliate_comment_matches(posted, product) is True
 
 
 def test_comment_fingerprint_is_stable_per_video_and_link():
