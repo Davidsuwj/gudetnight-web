@@ -257,7 +257,7 @@ def build_shorts_mode_prompt(prompt: str, product: dict | None = None) -> str:
         output_shape = '{"TOPIC":"短而有張力的標題","CONTEXT1":"開場鉤子與今天重點","CONTEXT2":"核心數據/事件與影響","CONTEXT3":"結尾觀察與風險提醒","PRODUCT_CONTEXT":"自然銜接商品用途，最後一句固定為請參考留言處商品連結"}'
     return f"""
 你是股得Night短影音編劇。請根據使用者需求，產出 YouTube Shorts 用的繁體中文文案。
-限制：新聞正文總長盡量 35-55 秒；CONTEXT1/2/3 每段 70-100 字，適合 TTS 朗讀；語氣專業但口語、像台股朋友提醒，不要投資建議承諾。
+限制：新聞正文總長盡量 35-55 秒；CONTEXT1/2/3 每段 70-100 字，適合 TTS 朗讀；語氣專業但口語、像台股朋友提醒，不要投資建議承諾。不要自行加入訂閱、按讚、小鈴鐺或分享 CTA；系統會在最後固定追加。
 {product_block}
 請只輸出 JSON，不要 markdown，不要額外說明：
 {output_shape}
@@ -268,6 +268,10 @@ def build_shorts_mode_prompt(prompt: str, product: dict | None = None) -> str:
 
 
 PRODUCT_COMMENT_CTA = "請參考留言處商品連結"
+ENGAGEMENT_CTA = (
+    "喜歡這支影片，歡迎訂閱股得Night、按讚、開啟小鈴鐺，"
+    "也別忘了分享給關心市場的朋友，我們下支影片見。"
+)
 
 
 def normalize_product_context_cta(value: str) -> str:
@@ -295,6 +299,24 @@ def attach_product_context(data: dict) -> dict:
     result["NEWS_CONTEXT3"] = news_context3
     result["PRODUCT_CONTEXT"] = product_context
     result["CONTEXT3"] = "\n\n".join(x for x in [news_context3, product_context] if x)
+    return result
+
+
+def attach_engagement_context(data: dict) -> dict:
+    """Append one deterministic engagement CTA to the final TTS context.
+
+    VoAI reads only CONTEXT1/2/3, so the CTA must be part of CONTEXT3.  Keep
+    NEWS_CONTEXT3 separate so the six editorial visuals never contain the CTA.
+    Rebuild from named components to keep retries idempotent.
+    """
+    result = dict(data)
+    news_context3 = str(result.get("NEWS_CONTEXT3") or result.get("CONTEXT3") or "").strip()
+    product_context = str(result.get("PRODUCT_CONTEXT") or "").strip()
+    result["NEWS_CONTEXT3"] = news_context3
+    result["ENGAGEMENT_CONTEXT"] = ENGAGEMENT_CTA
+    result["CONTEXT3"] = "\n\n".join(
+        part for part in (news_context3, product_context, ENGAGEMENT_CTA) if part
+    )
     return result
 
 
@@ -399,8 +421,10 @@ async def _send_visible_chatgpt_message(page, message: str) -> bool:
 
 def stage_script(job_id: str, st: dict):
     data = asyncio.run(send_chatgpt_prompt(st["prompt"], st["target_type"], st.get("product")))
-    if st.get("product") and st.get("target_type") == "shorts":
-        data = attach_product_context(data)
+    if st.get("target_type") == "shorts":
+        if st.get("product"):
+            data = attach_product_context(data)
+        data = attach_engagement_context(data)
     out = jdir(job_id) / "podcast_output.json"
     out.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     st["script_json"] = data
@@ -445,10 +469,18 @@ def stage_audio(job_id: str, st: dict):
 
 def find_font():
     candidates = [
+        # Native Windows worker paths.
         r"C:\Windows\Fonts\msjh.ttc",
+        r"C:\Windows\Fonts\msjhbd.ttc",
         r"C:\Windows\Fonts\NotoSansCJK-Regular.ttc",
         r"C:\Windows\Fonts\mingliu.ttc",
-        r"C:\Windows\Fonts\arial.ttf",
+        # The same Windows fonts when the worker runs under WSL.
+        "/mnt/c/Windows/Fonts/msjh.ttc",
+        "/mnt/c/Windows/Fonts/msjhbd.ttc",
+        "/mnt/c/Windows/Fonts/mingliu.ttc",
+        # Linux CJK fallbacks. Do not use Arial/DejaVu for Chinese cards.
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
     ]
     for c in candidates:
         if os.path.exists(c):
@@ -502,6 +534,56 @@ def make_card(path: Path, title: str, body: str, idx: int, total: int):
     img.save(path, quality=95)
 
 
+def make_engagement_card(path: Path, body: str, idx: int, total: int):
+    """Render the final branded Shorts CTA without an extra ChatGPT image call."""
+    W, H = 1080, 1920
+    img = Image.new("RGB", (W, H), (6, 12, 27))
+    draw = ImageDraw.Draw(img)
+    for y in range(H):
+        ratio = y / H
+        draw.line(
+            [(0, y), (W, y)],
+            fill=(
+                6 + int(16 * ratio),
+                12 + int(22 * ratio),
+                27 + int(58 * ratio),
+            ),
+        )
+
+    font_path = find_font()
+    title_font = ImageFont.truetype(font_path, 92) if font_path else ImageFont.load_default()
+    action_font = ImageFont.truetype(font_path, 66) if font_path else ImageFont.load_default()
+    body_font = ImageFont.truetype(font_path, 48) if font_path else ImageFont.load_default()
+    small_font = ImageFont.truetype(font_path, 34) if font_path else ImageFont.load_default()
+
+    draw.rounded_rectangle(
+        (65, 90, 1015, 1830), radius=54,
+        outline=(255, 180, 0), width=5, fill=(10, 20, 43),
+    )
+    draw.text((105, 135), "股得Night Shorts", fill=(190, 205, 255), font=small_font)
+    draw.text((875, 135), f"{idx}/{total}", fill=(255, 210, 95), font=small_font)
+
+    heading = "訂閱股得Night"
+    heading_width = draw.textbbox((0, 0), heading, font=title_font)[2]
+    draw.text(((W - heading_width) / 2, 360), heading, fill=(255, 180, 0), font=title_font)
+
+    actions = "按讚・小鈴鐺・分享"
+    actions_width = draw.textbbox((0, 0), actions, font=action_font)[2]
+    draw.text(((W - actions_width) / 2, 540), actions, fill=(255, 255, 255), font=action_font)
+
+    y = 780
+    for line in wrap_text(draw, body, body_font, 800)[:6]:
+        width = draw.textbbox((0, 0), line, font=body_font)[2]
+        draw.text(((W - width) / 2, y), line, fill=(225, 235, 255), font=body_font)
+        y += 76
+
+    draw.rounded_rectangle((180, 1450, 900, 1585), radius=64, fill=(255, 180, 0))
+    button = "持續掌握市場重點"
+    button_width = draw.textbbox((0, 0), button, font=action_font)[2]
+    draw.text(((W - button_width) / 2, 1480), button, fill=(10, 20, 43), font=action_font)
+    img.save(path, quality=95)
+
+
 def split_contexts_into_six(data: dict) -> list[dict]:
     """Split the three news contexts into two visual chunks each = 6 images."""
     chunks = []
@@ -524,7 +606,7 @@ def split_contexts_into_six(data: dict) -> list[dict]:
 
 
 def build_visual_chunks(data: dict, product: dict | None = None) -> list[dict]:
-    """Keep six news visuals and append one dedicated product outro visual."""
+    """Keep six news visuals, optional product card, and final engagement card."""
     chunks = split_contexts_into_six(data)
     if product and str(data.get("PRODUCT_CONTEXT", "")).strip():
         from affiliate_product import normalize_product
@@ -536,6 +618,15 @@ def build_visual_chunks(data: dict, product: dict | None = None) -> list[dict]:
             "text": str(data.get("PRODUCT_CONTEXT", "")).strip(),
             "product_name": p["name"],
             "product_reason": p["relevance_reason"],
+            "index": len(chunks) + 1,
+        })
+    engagement = str(data.get("ENGAGEMENT_CONTEXT", "")).strip()
+    if engagement:
+        chunks.append({
+            "kind": "engagement",
+            "context": "ENGAGEMENT_CONTEXT",
+            "part": 1,
+            "text": engagement,
             "index": len(chunks) + 1,
         })
     return chunks
@@ -698,7 +789,12 @@ def generate_chatgpt_shorts_images(job_id: str, data: dict) -> list[Path]:
             raw_path = out_dir / f"raw_{idx:02d}.png"
             if final_path.exists():
                 final_paths.append(final_path)
-                log(f"GPT image exists, reuse: {final_path}")
+                log(f"Shorts visual exists, reuse: {final_path}")
+                continue
+            if chunk.get("kind") == "engagement":
+                make_engagement_card(final_path, text, idx, len(chunks))
+                final_paths.append(final_path)
+                log(f"Deterministic engagement card saved: {final_path}")
                 continue
             card_title = str(chunk.get("product_name") or title) if chunk.get("kind") == "product" else str(title)
             if resuming_partial:
